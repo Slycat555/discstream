@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disc Stream</title>
+<style>
+  :root { --bg: #f4f4f5; --fg: #18181b; --muted: #71717a; --card: #ffffff; --line: #e4e4e7; --accent: #2563eb; --accent-bg: #dbeafe; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0b0b0d; --fg: #e4e4e7; --muted: #a1a1aa; --card: #18181b; --line: #27272a; --accent: #60a5fa; --accent-bg: #172554; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; display: block; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; color: var(--muted); font-size: 14px; }
+  .state { color: var(--fg); font-weight: 600; }
+  code { background: var(--card); padding: 2px 6px; border-radius: 4px; word-break: break-all; }
+  #titles { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  #titles li + li { border-top: 1px solid var(--line); }
+  #titles button { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; }
+  #titles button:hover, #titles button:focus-visible { background: var(--bg); }
+  #titles button[aria-current="true"] { background: var(--accent-bg); }
+  #titles button:disabled { cursor: progress; opacity: .6; }
+  .num { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2ch; text-align: right; }
+  .name { flex: 1; }
+  .dur { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tag { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .now { border-color: var(--accent); color: var(--accent); }
+  .empty { padding: 12px 14px; color: var(--muted); }
+  .cache { margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .cache[hidden] { display: none; }
+  .track { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 6px; }
+  .fill { height: 100%; width: 0; background: var(--accent); transition: width .5s; }
+  .done { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Disc Stream</h1>
+  <video id="v" controls playsinline></video>
+  <div class="bar">
+    <span>Status: <span class="state" id="state">connecting…</span></span>
+    <span id="disc"></span>
+  </div>
+  <div class="cache" id="cache" hidden>
+    <span id="cachetext"></span>
+    <div class="track"><div class="fill" id="cachefill"></div></div>
+  </div>
+
+  <h2>Titles</h2>
+  <ul id="titles"><li class="empty">Reading the disc…</li></ul>
+
+  <p class="bar">Open in VLC, mpv or Kodi: <code id="url"></code></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<script>
+  const src = "live/index.m3u8";
+  const video = document.getElementById("v");
+  const list = document.getElementById("titles");
+  document.getElementById("url").textContent = new URL(src, location.href).href;
+
+  let hls = null, loadedGen = 0, shownTitles = "", busy = false;
+
+  function stopPlayer() {
+    if (hls) { hls.destroy(); hls = null; }
+    video.removeAttribute("src");
+    video.load();
+  }
+
+  function startPlayer() {
+    if (window.Hls && Hls.isSupported()) {
+      // The playlist grows as the title is cached ahead; start at the
+      // beginning and never jump to the newest segment on our own.
+      hls = new Hls({ startPosition: 0 });
+      hls.loadSource(src);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.ERROR, (_, d) => {
+        if (!d.fatal) return;
+        if (d.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+        else setTimeout(() => hls && hls.startLoad(), 2000);
+      });
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = src;
+    } else {
+      document.getElementById("state").textContent = "this browser can't play HLS – use the link below in VLC";
+      return;
+    }
+    video.play().catch(() => {});
+  }
+
+  function fmt(sec) {
+    sec = Math.round(sec);
+    const h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s = sec % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0");
+  }
+
+  function renderTitles(titles, current) {
+    const key = JSON.stringify([titles, current, busy]);
+    if (key === shownTitles) return;
+    shownTitles = key;
+    if (!titles || !titles.length) return;
+    list.replaceChildren(...titles.map((t, i) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.disabled = busy;
+      if (t.id === current) b.setAttribute("aria-current", "true");
+      const parts = [["num", String(i + 1)], ["name", t.name], ["dur", fmt(t.duration)]];
+      for (const [cls, text] of parts) {
+        const span = document.createElement("span");
+        span.className = cls; span.textContent = text; b.append(span);
+      }
+      if (t.cached) { const s = document.createElement("span"); s.className = "tag done"; s.textContent = "Cached"; b.append(s); }
+      if (t.hint) { const s = document.createElement("span"); s.className = "tag"; s.textContent = t.hint; b.append(s); }
+      if (t.id === current) { const s = document.createElement("span"); s.className = "tag now"; s.textContent = "Now playing"; b.append(s); }
+      b.onclick = () => select(t);
+      li.append(b);
+      return li;
+    }));
+  }
+
+  async function select(t) {
+    busy = true;
+    document.getElementById("state").textContent = "switching to " + t.name + "…";
+    stopPlayer();
+    loadedGen = -1;
+    try {
+      const r = await fetch("play", { method: "POST", body: new URLSearchParams({ id: t.id }) });
+      if (!r.ok) document.getElementById("state").textContent = "error: " + (await r.text());
+    } finally {
+      busy = false;
+      poll();
+    }
+  }
+
+  function renderCache(s) {
+    const cur = (s.titles || []).find(t => t.id === s.current);
+    const box = document.getElementById("cache");
+    box.hidden = !cur || !s.ready;
+    if (box.hidden) return;
+    const pct = s.complete ? 100 : Math.min(100, 100 * s.cached / cur.duration);
+    document.getElementById("cachefill").style.width = pct + "%";
+    document.getElementById("cachetext").textContent = s.complete
+      ? "Fully cached – seek anywhere"
+      : "Cached " + fmt(s.cached) + " of " + fmt(cur.duration) + " – you can seek up to there";
+  }
+
+  let timer = null;
+  async function poll() {
+    clearTimeout(timer);
+    try {
+      const s = await (await fetch("status", { cache: "no-store" })).json();
+      if (!busy) document.getElementById("state").textContent = s.state + (s.detail ? " – " + s.detail : "");
+      if (s.disc) document.getElementById("disc").textContent = "Disc: " + s.disc + " (encryption: " + s.encryption + ")";
+      renderTitles(s.titles, s.current);
+      renderCache(s);
+      // A new generation means the server restarted the stream on another title.
+      if (s.gen !== loadedGen && s.ready && !busy) {
+        stopPlayer();
+        loadedGen = s.gen;
+        startPlayer();
+      }
+    } catch (e) {
+      document.getElementById("state").textContent = "server unreachable";
+    }
+    timer = setTimeout(poll, 2000);
+  }
+  poll();
+</script>
+</body>
+</html>
