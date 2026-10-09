@@ -6,7 +6,7 @@ set -eu
 cd "$(dirname "$0")"
 ROOT=$PWD
 CACHE=$ROOT/.build-cache
-VERSION=${VERSION:-1.0.0}
+VERSION=${VERSION:-1.0.1}
 FFMPEG_URL=${FFMPEG_URL:-https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz}
 APPIMAGETOOL_URL=https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
 mkdir -p "$CACHE"

@@ -84,7 +84,9 @@ func inputArgs(o options) []string {
 // Sync: video is forced to constant frame rate (frames are duplicated or
 // dropped to follow the timestamps) and audio is resampled with async
 // compensation, so gaps and timestamp jumps at cell/clip boundaries are
-// filled with silence instead of shifting audio against video.
+// filled with silence instead of shifting audio against video. A late audio
+// start is left to the timestamps: padding it with first_pts=0 counted the
+// gap twice on Blu-ray (MPEG-TS) input and made audio ~0.5 s late.
 func outputArgs(o options, audioOnly bool, hlsDir string, gen int) []string {
 	var a []string
 	if audioOnly {
@@ -109,7 +111,7 @@ func outputArgs(o options, audioOnly bool, hlsDir string, gen int) []string {
 		}
 	}
 	a = append(a,
-		"-af", "aresample=async=1:min_hard_comp=0.100:first_pts=0",
+		"-af", "aresample=async=1:min_hard_comp=0.100",
 		"-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000",
 		"-sn", "-dn",
 		"-max_muxing_queue_size", "4096",

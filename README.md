@@ -13,7 +13,7 @@ Streams the disc in your optical drive to every device on your local network.
 ## Usage
 
 ```sh
-./discstream-1.0.0.AppImage                 # stream /dev/sr0 on port 8080
+./discstream-1.0.1.AppImage                 # stream /dev/sr0 on port 8080
 ```
 
 It prints the addresses to open, for example:
@@ -81,7 +81,7 @@ Common options (`--help` lists them all):
 - **MakeMKV, for encrypted discs.** Its licence doesn't allow bundling it, so install it separately:
   - native: https://www.makemkv.com/forum/viewtopic.php?f=3&t=224 (`makemkvcon` on `PATH`), or
   - Flatpak: `flatpak install flathub com.makemkv.MakeMKV` (detected automatically), or
-  - any other location: `MAKEMKVCON=/path/to/makemkvcon ./discstream-1.0.0.AppImage`
+  - any other location: `MAKEMKVCON=/path/to/makemkvcon ./discstream-1.0.1.AppImage`
 
   MakeMKV needs a valid beta or registration key. Its messages are shown in the log.
 - **FUSE**, as for any AppImage. Without FUSE, run it with `APPIMAGE_EXTRACT_AND_RUN=1`.
@@ -92,7 +92,9 @@ Discs often start audio a fraction of a second after video. Blu-ray playlists an
 
 - `-fflags +genpts` gives every packet a timestamp.
 - Video is forced to a constant frame rate, so frames are duplicated or dropped to follow the timestamps.
-- Audio goes through `aresample=async=1:first_pts=0`, which pads any gaps (including a late start) with silence instead of sliding audio against video.
+- Audio goes through `aresample=async=1`, which fills gaps in the middle with silence instead of sliding audio against video. A late audio start is kept as it is on the disc, so it lines up with the picture.
+
+Measured against the disc itself, by matching scene cuts and the audio waveform, the stream's audio is within about 20 ms of the video. That remaining 20 ms is the AAC encoder's start-up delay, which is too small to notice.
 
 
 ## How encryption is detected
